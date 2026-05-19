@@ -1,0 +1,7 @@
+{
+  "name": "iPad StandBy",
+  "short_name": "StandBy",
+  "display": "fullscreen",
+  "background_color": "#000000",
+  "theme_color": "#000000"
+}
