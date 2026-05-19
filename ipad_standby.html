@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <!-- PWA Meta Tags for iPad -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>iPad StandBy</title>
+  
+  <style>
+    :root {
+      --spotify-green: #1DB954;
+    }
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100vw;
+      height: 100vh;
+      background-color: #000;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    #ui-container {
+      display: flex;
+      width: 100%;
+      height: 100%;
+      opacity: 1;
+      transition: opacity 0.2s ease-out;
+    }
+
+    /* Left Side: Clock */
+    #clock-container {
+      flex: 1;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      border-right: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .clock {
+      width: 60%;
+      max-width: 400px;
+      aspect-ratio: 1;
+    }
+
+    /* Right Side: Spotify */
+    #spotify-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 2rem;
+      box-sizing: border-box;
+    }
+
+    .album-art {
+      width: 250px;
+      height: 250px;
+      background-color: #222;
+      border-radius: 12px;
+      margin-bottom: 2rem;
+      object-fit: cover;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+
+    .track-info {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+
+    .track-title {
+      font-size: 1.8rem;
+      font-weight: bold;
+      margin: 0 0 0.5rem 0;
+      display: -webkit-box;
+      -webkit-line-clamp: 1;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .track-artist {
+      font-size: 1.2rem;
+      color: #b3b3b3;
+      margin: 0;
+    }
+
+    .controls {
+      display: flex;
+      gap: 2rem;
+      align-items: center;
+    }
+
+    button {
+      background: none;
+      border: none;
+      color: #fff;
+      font-size: 2rem;
+      cursor: pointer;
+      padding: 10px;
+      transition: transform 0.1s;
+    }
+    
+    button:active {
+      transform: scale(0.9);
+    }
+
+    .play-pause-btn {
+      font-size: 3.5rem;
+    }
+
+    #auth-button {
+      background-color: var(--spotify-green);
+      color: black;
+      font-size: 1.2rem;
+      font-weight: bold;
+      padding: 12px 30px;
+      border-radius: 500px;
+      text-decoration: none;
+      display: inline-block;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="ui-container">
+    
+    <!-- Left: Analog Clock -->
+    <div id="clock-container">
+      <svg class="clock" viewBox="0 0 100 100">
+        <!-- Dial -->
+        <circle cx="50" cy="50" r="48" stroke="#333" stroke-width="1" fill="black" />
+        <!-- Ticks -->
+        <g stroke="#555" stroke-width="2">
+          <line x1="50" y1="2" x2="50" y2="6" />
+          <line x1="50" y1="94" x2="50" y2="98" />
+          <line x1="2" y1="50" x2="6" y2="50" />
+          <line x1="94" y1="50" x2="98" y2="50" />
+        </g>
+        <!-- Hands -->
+        <line id="hour-hand" x1="50" y1="50" x2="50" y2="25" stroke="white" stroke-width="3" stroke-linecap="round" />
+        <line id="minute-hand" x1="50" y1="50" x2="50" y2="12" stroke="white" stroke-width="2" stroke-linecap="round" />
+        <line id="second-hand" x1="50" y1="50" x2="50" y2="10" stroke="orange" stroke-width="1" stroke-linecap="round" />
+        <circle cx="50" cy="50" r="2.5" fill="orange" />
+      </svg>
+    </div>
+
+    <!-- Right: Spotify Controls -->
+    <div id="spotify-container">
+      
+      <!-- Login View -->
+      <div id="login-view">
+        <a href="#" id="auth-button">Connect Spotify</a>
+      </div>
+
+      <!-- Player View -->
+      <div id="player-view" class="hidden">
+        <img id="album-art" class="album-art" src="" alt="Album Art">
+        <div class="track-info">
+          <h2 id="track-title" class="track-title">Waiting for music...</h2>
+          <p id="track-artist" class="track-artist">Open Spotify to start playing</p>
+        </div>
+        <div class="controls">
+          <button onclick="spotifyCommand('previous')">⏮</button>
+          <button id="play-pause-btn" class="play-pause-btn" onclick="togglePlay()">⏯</button>
+          <button onclick="spotifyCommand('next')">⏭</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    // ==========================================
+    // 1. SYSTEM LOGIC: Wake Lock & Fade to Black
+    // ==========================================
+    let wakeLock = null;
+    let fadeTimeout;
+    const uiContainer = document.getElementById('ui-container');
+
+    async function requestWakeLock() {
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLock = await navigator.wakeLock.request('screen');
+        }
+      } catch (err) {
+        console.error(`Wake Lock error: ${err.message}`);
+      }
+    }
+
+    function resetInactivityTimer() {
+      // Wake up UI instantly
+      uiContainer.style.transition = 'opacity 0.2s ease-out';
+      uiContainer.style.opacity = '1';
+      clearTimeout(fadeTimeout);
+      
+      // Fade to black after 60 seconds
+      fadeTimeout = setTimeout(() => {
+        uiContainer.style.transition = 'opacity 2s ease-in'; 
+        uiContainer.style.opacity = '0'; 
+      }, 60000);
+    }
+
+    // Wake up on tap
+    document.addEventListener('touchstart', resetInactivityTimer);
+    document.addEventListener('click', resetInactivityTimer);
+
+    // Re-lock screen if app is backgrounded and foregrounded
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        requestWakeLock();
+      }
+    });
+
+    // ==========================================
+    // 2. CLOCK LOGIC
+    // ==========================================
+    const hourHand = document.getElementById('hour-hand');
+    const minHand = document.getElementById('minute-hand');
+    const secHand = document.getElementById('second-hand');
+
+    function updateClock() {
+      const now = new Date();
+      const hours = now.getHours();
+      const minutes = now.getMinutes();
+      const seconds = now.getSeconds();
+      const ms = now.getMilliseconds();
+
+      // Calculate degrees
+      const hDeg = (hours % 12) * 30 + minutes * 0.5;
+      const mDeg = minutes * 6 + seconds * 0.1;
+      const sDeg = seconds * 6 + ms * 0.006; // Smooth sweeping seconds
+
+      // Apply rotation around the center (50, 50)
+      hourHand.setAttribute('transform', `rotate(${hDeg}, 50, 50)`);
+      minHand.setAttribute('transform', `rotate(${mDeg}, 50, 50)`);
+      secHand.setAttribute('transform', `rotate(${sDeg}, 50, 50)`);
+      
+      requestAnimationFrame(updateClock);
+    }
+
+    // ==========================================
+    // 3. SPOTIFY LOGIC
+    // ==========================================
+    // TODO: REPLACE THESE WITH YOUR DETAILS
+    const CLIENT_ID = 'YOUR_SPOTIFY_CLIENT_ID'; 
+    const REDIRECT_URI = window.location.href.split('#')[0]; // Dynamically grabs current URL
+    
+    let accessToken = null;
+    let isPlaying = false;
+
+    // Check URL hash for OAuth token
+    function checkAuth() {
+      const hash = window.location.hash.substring(1);
+      const params = new URLSearchParams(hash);
+      
+      if (params.has('access_token')) {
+        accessToken = params.get('access_token');
+        window.history.replaceState({}, document.title, window.location.pathname); // Clean URL
+        document.getElementById('login-view').classList.add('hidden');
+        document.getElementById('player-view').classList.remove('hidden');
+        pollSpotify();
+        setInterval(pollSpotify, 3000); // Check status every 3 seconds
+      } else {
+        setupAuthButton();
+      }
+    }
+
+    function setupAuthButton() {
+      const scopes = 'user-read-playback-state user-modify-playback-state';
+      const authUrl = `https://accounts.spotify.com/authorize?client_id=${CLIENT_ID}&response_type=token&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=${encodeURIComponent(scopes)}`;
+      document.getElementById('auth-button').href = authUrl;
+    }
+
+    async function pollSpotify() {
+      if (!accessToken) return;
+      try {
+        const res = await fetch('https://api.spotify.com/v1/me/player', {
+          headers: { 'Authorization': `Bearer ${accessToken}` }
+        });
+        
+        if (res.status === 200) {
+          const data = await res.json();
+          isPlaying = data.is_playing;
+          document.getElementById('track-title').innerText = data.item.name;
+          document.getElementById('track-artist').innerText = data.item.artists.map(a => a.name).join(', ');
+          document.getElementById('album-art').src = data.item.album.images[0].url;
+          document.getElementById('play-pause-btn').innerText = isPlaying ? '⏸' : '▶️';
+        }
+      } catch (e) {
+        console.error('Spotify API Error:', e);
+      }
+    }
+
+    async function spotifyCommand(command) {
+      if (!accessToken) return;
+      await fetch(`https://api.spotify.com/v1/me/player/${command}`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      setTimeout(pollSpotify, 500); // Quick refresh after command
+    }
+
+    async function togglePlay() {
+      if (!accessToken) return;
+      const command = isPlaying ? 'pause' : 'play';
+      await fetch(`https://api.spotify.com/v1/me/player/${command}`, {
+        method: 'PUT',
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      setTimeout(pollSpotify, 500);
+    }
+
+    // ==========================================
+    // INITIALIZATION
+    // ==========================================
+    requestWakeLock();
+    resetInactivityTimer();
+    updateClock();
+    checkAuth();
+  </script>
+</body>
+</html>ø
+
